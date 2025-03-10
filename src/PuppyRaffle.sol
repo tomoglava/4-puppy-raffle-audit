@@ -107,6 +107,8 @@ contract PuppyRaffle is ERC721, Ownable {
     /// @notice a way to get the index in the array
     /// @param player the address of a player in the raffle
     /// @return the index of the player in the array, if they are not active, it returns 0
+
+    // @audit - there is bug if player index is 0, it will return 0, which is the first index, can be proven with test
     function getActivePlayerIndex(address player) external view returns (uint256) {
         for (uint256 i = 0; i < players.length; i++) {
             if (players[i] == player) {
@@ -122,6 +124,10 @@ contract PuppyRaffle is ERC721, Ownable {
     /// @dev we use a hash of on-chain data to generate the random numbers
     /// @dev we reset the active players array after the winner is selected
     /// @dev we send 80% of the funds to the winner, the other 20% goes to the feeAddress
+
+    // @audit - what happens if there are less then 4 players and raffleDuration passed? Can new players enter and continue the raffle? Or should player refund?
+    // @audit - isn't winnerIndex manipulative? msg.sender can manipulate the winnerIndex by calling the function at a specific time at specific difficulty
+    // @audit - isn't rarity manipulative? msg.sender can manipulate the rarity by calling the function at specific difficulty
     function selectWinner() external {
         require(block.timestamp >= raffleStartTime + raffleDuration, "PuppyRaffle: Raffle not over");
         require(players.length >= 4, "PuppyRaffle: Need at least 4 players");
