@@ -20,7 +20,10 @@ contract PuppyRaffle is ERC721, Ownable {
 
     uint256 public immutable entranceFee;
 
+
     address[] public players;
+    //uint256 raffleId;
+    mapping(address => uint256) public playerToRaffleId;
     uint256 public raffleDuration;
     uint256 public raffleStartTime;
     address public previousWinner;
@@ -77,12 +80,20 @@ contract PuppyRaffle is ERC721, Ownable {
     /// @notice duplicate entrants are not allowed
     /// @param newPlayers the list of players to enter the raffle
     function enterRaffle(address[] memory newPlayers) public payable {
+        // q were custom reverts a thing in solidity 0.7.6?
+        // q what if it's 0?
         require(msg.value == entranceFee * newPlayers.length, "PuppyRaffle: Must send enough to enter raffle");
         for (uint256 i = 0; i < newPlayers.length; i++) {
             players.push(newPlayers[i]);
+            //playerToRaffleId[newPlayers[i]] = raffleId;
         }
 
+        // for(uint256 i = 0; i < newPlayers.length; i++) {
+        //     require(playerToRaffleId[newPlayers[i]] != raffleId, "PuppyRaffle: Duplicate player");
+        // }
+
         // Check for duplicates
+        // @audit DoS attack possible if players array is too large
         for (uint256 i = 0; i < players.length - 1; i++) {
             for (uint256 j = i + 1; j < players.length; j++) {
                 require(players[i] != players[j], "PuppyRaffle: Duplicate player");
@@ -94,10 +105,13 @@ contract PuppyRaffle is ERC721, Ownable {
     /// @param playerIndex the index of the player to refund. You can find it externally by calling `getActivePlayerIndex`
     /// @dev This function will allow there to be blank spots in the array
     function refund(uint256 playerIndex) public {
+        // @audit - MEV possible
         address playerAddress = players[playerIndex];
         require(playerAddress == msg.sender, "PuppyRaffle: Only the player can refund");
         require(playerAddress != address(0), "PuppyRaffle: Player already refunded, or is not active");
 
+
+        // @audit reentrancy
         payable(msg.sender).sendValue(entranceFee);
 
         players[playerIndex] = address(0);
@@ -129,6 +143,7 @@ contract PuppyRaffle is ERC721, Ownable {
     // @audit - isn't winnerIndex manipulative? msg.sender can manipulate the winnerIndex by calling the function at a specific time at specific difficulty
     // @audit - isn't rarity manipulative? msg.sender can manipulate the rarity by calling the function at specific difficulty
     function selectWinner() external {
+        //raffleId = raffleId + 1;
         require(block.timestamp >= raffleStartTime + raffleDuration, "PuppyRaffle: Raffle not over");
         require(players.length >= 4, "PuppyRaffle: Need at least 4 players");
         uint256 winnerIndex =
