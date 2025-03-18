@@ -200,6 +200,7 @@ contract PuppyRaffleTest is Test {
     //////////////////////
     /// selectWinner         ///
     /////////////////////
+
     modifier playersEntered() {
         address[] memory players = new address[](4);
         players[0] = playerOne;
@@ -266,6 +267,33 @@ contract PuppyRaffleTest is Test {
 
         puppyRaffle.selectWinner();
         assertEq(puppyRaffle.tokenURI(0), expectedTokenUri);
+    }
+
+    // my test for overflow
+
+    function testMyOverflow() public {
+        uint256 playersNum = 1500;
+
+        uint256 expectedTotalFees = (entranceFee * playersNum * 20) / 100;
+
+        address[] memory players = new address[](playersNum);
+        for (uint256 i = 0; i < playersNum; i++) {
+            players[i] = address(i);
+        }
+
+        puppyRaffle.enterRaffle{value: entranceFee * playersNum}(players);
+
+        vm.warp(block.timestamp + duration + 1);
+        vm.roll(block.number + 1);
+
+        puppyRaffle.selectWinner();
+
+        uint256 realTotalFees = uint256(puppyRaffle.getTotalFees());
+
+        console.log("Real total fees: ", realTotalFees);
+        console.log("Expected total fees: ", expectedTotalFees);
+
+        assert(realTotalFees != expectedTotalFees);
     }
 
     //////////////////////

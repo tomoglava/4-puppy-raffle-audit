@@ -67,8 +67,6 @@ Place the following test into `PuppyRaffleTest.t.sol`.
 
 ```diff
     function enterRaffle(address[] memory newPlayers) public payable {
-        // q were custom reverts a thing in solidity 0.7.6?
-        // q what if it's 0?
         require(msg.value == entranceFee * newPlayers.length, "PuppyRaffle: Must send enough to enter raffle");
         for (uint256 i = 0; i < newPlayers.length; i++) {
             players.push(newPlayers[i]);
